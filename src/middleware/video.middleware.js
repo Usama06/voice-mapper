@@ -1,133 +1,149 @@
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs-extra");
+const { FileUploadUtils, DirectoryUtils, ResponseUtils } = require("../utils");
 
 class VideoMiddleware {
   constructor() {
-    // Ensure upload directories exist
-    this.ensureDirectories();
+    this.isInitialized = false;
   }
 
-  async ensureDirectories() {
-    const dirs = [
-      "./uploads/images",
-      "./uploads/audio",
-      "./output/videos",
-      "./temp",
-    ];
-
-    for (const dir of dirs) {
-      await fs.ensureDir(dir);
+  // Initialize middleware (called once during app startup)
+  async initialize() {
+    if (!this.isInitialized) {
+      await DirectoryUtils.initializeAppDirectories();
+      this.isInitialized = true;
+      console.log("✅ Video middleware initialized");
     }
   }
 
-  // File upload middleware configuration
-  uploadFiles() {
-    const upload = multer({
-      storage: multer.diskStorage({
-        destination: (req, file, cb) => {
-          if (file.fieldname === "images") {
-            cb(null, "./uploads/images");
-          } else if (file.fieldname === "voiceover") {
-            cb(null, "./uploads/audio");
-          }
-        },
-        filename: (req, file, cb) => {
-          const uniqueSuffix =
-            Date.now() + "-" + Math.round(Math.random() * 1e9);
-          cb(
-            null,
-            file.fieldname +
-              "-" +
-              uniqueSuffix +
-              path.extname(file.originalname)
-          );
-        },
-      }),
-      limits: {
-        fileSize:
-          parseInt(process.env.MAX_FILE_SIZE?.replace("MB", "")) *
-            1024 *
-            1024 || 50 * 1024 * 1024, // 50MB default
-      },
-      fileFilter: (req, file, cb) => {
-        if (file.fieldname === "images") {
-          // Accept images
-          if (file.mimetype.startsWith("image/")) {
-            cb(null, true);
-          } else {
-            cb(
-              new Error("Only image files are allowed for images field"),
-              false
-            );
-          }
-        } else if (file.fieldname === "voiceover") {
-          // Accept audio files
-          if (file.mimetype.startsWith("audio/")) {
-            cb(null, true);
-          } else {
-            cb(
-              new Error("Only audio files are allowed for voiceover field"),
-              false
-            );
-          }
-        } else {
-          cb(new Error("Unexpected field"), false);
-        }
-      },
+  // Legacy method for backward compatibility
+  async ensureDirectories() {
+    await this.initialize();
+  }
+
+  // Create multer configuration using FileUploadUtils
+  getMulterConfig() {
+    const destinations = {
+      images: "./uploads/images",
+      voiceover: "./uploads/audio",
+    };
+
+    const allowedTypes = {
+      images: [
+        "image/jpeg",
+        "image/png",
+        "image/gif",
+        "image/bmp",
+        "image/webp",
+      ],
+      voiceover: [
+        "audio/mpeg",
+        "audio/wav",
+        "audio/mp3",
+        "audio/aac",
+        "audio/ogg",
+      ],
+    };
+
+    console.log("🔧 Middleware multer config:");
+    console.log("  - Destinations:", destinations);
+    console.log("  - Allowed types:", allowedTypes);
+
+    const maxFileSizeMB = FileUploadUtils.parseFileSizeFromEnv(
+      process.env.MAX_FILE_SIZE,
+      50
+    );
+
+    const config = FileUploadUtils.createMulterConfig({
+      destinations,
+      allowedTypes,
+      maxFileSizeMB,
     });
 
-    return upload.fields([
-      { name: "images", maxCount: parseInt(process.env.MAX_IMAGE_COUNT) || 10 },
+    console.log("  - Final config created");
+    return config;
+  }
+
+  // File upload middleware using FileUploadUtils
+  uploadFiles() {
+    console.log("📤 Setting up file upload middleware...");
+    const multerConfig = this.getMulterConfig();
+    const upload = multer(multerConfig);
+
+    // Direct field configuration for multer (not using FileUploadUtils for this)
+    const fieldsConfig = [
+      {
+        name: "images",
+        maxCount: parseInt(process.env.MAX_IMAGE_COUNT, 10) || 10,
+      },
       {
         name: "voiceover",
-        maxCount: parseInt(process.env.MAX_AUDIO_COUNT) || 1,
+        maxCount: parseInt(process.env.MAX_AUDIO_COUNT, 10) || 1,
       },
-    ]);
+    ];
+
+    console.log("  - Fields config:", fieldsConfig);
+
+    return upload.fields(fieldsConfig);
   }
 
   // Validation middleware for video generation
   validateVideoRequest(req, res, next) {
     try {
-      // Validate uploads
-      if (!req.files || !req.files.images || !req.files.voiceover) {
-        return res.status(400).json({
-          error: "Missing required files",
-          message: "Please upload at least one image and one voiceover file",
-        });
+      // Validate uploads using optional chaining
+      if (!req.files?.images || !req.files?.voiceover) {
+        return ResponseUtils.send(
+          res,
+          ResponseUtils.validationError(
+            "Please upload at least one image and one voiceover file",
+            "Missing required files"
+          )
+        );
       }
 
       const images = req.files.images;
       const voiceover = req.files.voiceover[0];
 
       // Validate image count
-      const maxImages = parseInt(process.env.MAX_IMAGE_COUNT) || 10;
+      const maxImages = parseInt(process.env.MAX_IMAGE_COUNT, 10) || 10;
       if (images.length > maxImages) {
-        return res.status(400).json({
-          error: "Too many images",
-          message: `Maximum ${maxImages} images allowed`,
-        });
+        return ResponseUtils.send(
+          res,
+          ResponseUtils.validationError(
+            `Maximum ${maxImages} images allowed`,
+            "Too many images"
+          )
+        );
       }
 
-      // Validate file sizes
-      const maxSize =
-        parseInt(process.env.MAX_FILE_SIZE?.replace("MB", "")) * 1024 * 1024 ||
-        50 * 1024 * 1024;
+      // Validate file sizes using FileUploadUtils
+      const maxSizeMB = FileUploadUtils.parseFileSizeFromEnv(
+        process.env.MAX_FILE_SIZE,
+        50
+      );
+      const maxSizeBytes = maxSizeMB * 1024 * 1024;
 
       for (const image of images) {
-        if (image.size > maxSize) {
-          return res.status(400).json({
-            error: "Image file too large",
-            message: `Image ${image.originalname} exceeds maximum size limit`,
-          });
+        if (image.size > maxSizeBytes) {
+          return ResponseUtils.send(
+            res,
+            ResponseUtils.validationError(
+              `Image ${image.originalname} exceeds maximum size limit of ${maxSizeMB}MB`,
+              "Image file too large"
+            )
+          );
         }
       }
 
-      if (voiceover.size > maxSize) {
-        return res.status(400).json({
-          error: "Audio file too large",
-          message: `Audio file exceeds maximum size limit`,
-        });
+      if (voiceover.size > maxSizeBytes) {
+        return ResponseUtils.send(
+          res,
+          ResponseUtils.validationError(
+            `Audio file exceeds maximum size limit of ${maxSizeMB}MB`,
+            "Audio file too large"
+          )
+        );
       }
 
       // Add validated data to request
@@ -139,10 +155,12 @@ class VideoMiddleware {
 
       next();
     } catch (error) {
-      return res.status(500).json({
-        error: "Validation failed",
-        message: error.message,
-      });
+      return ResponseUtils.send(
+        res,
+        ResponseUtils.error("Validation failed", 500, {
+          originalError: error.message,
+        })
+      );
     }
   }
 
@@ -150,30 +168,39 @@ class VideoMiddleware {
   handleUploadError(err, req, res, next) {
     if (err instanceof multer.MulterError) {
       if (err.code === "LIMIT_FILE_SIZE") {
-        return res.status(400).json({
-          error: "File too large",
-          message: "Uploaded file exceeds the maximum allowed size",
-        });
+        return ResponseUtils.send(
+          res,
+          ResponseUtils.validationError(
+            "Uploaded file exceeds the maximum allowed size",
+            "File too large"
+          )
+        );
       }
       if (err.code === "LIMIT_FILE_COUNT") {
-        return res.status(400).json({
-          error: "Too many files",
-          message: "Too many files uploaded",
-        });
+        return ResponseUtils.send(
+          res,
+          ResponseUtils.validationError(
+            "Too many files uploaded",
+            "Too many files"
+          )
+        );
       }
       if (err.code === "LIMIT_UNEXPECTED_FILE") {
-        return res.status(400).json({
-          error: "Unexpected file field",
-          message: "Unexpected file field in upload",
-        });
+        return ResponseUtils.send(
+          res,
+          ResponseUtils.validationError(
+            "Unexpected file field in upload",
+            "Unexpected file field"
+          )
+        );
       }
     }
 
     if (err) {
-      return res.status(400).json({
-        error: "Upload failed",
-        message: err.message,
-      });
+      return ResponseUtils.send(
+        res,
+        ResponseUtils.validationError(err.message, "Upload failed")
+      );
     }
 
     next();

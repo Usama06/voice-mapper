@@ -1,6 +1,7 @@
 const path = require("path");
 const fs = require("fs-extra");
 const ffmpeg = require("fluent-ffmpeg");
+const { VideoUtils, ResponseUtils, DirectoryUtils } = require("../utils");
 
 // Try to set FFmpeg path
 try {
@@ -35,18 +36,36 @@ class VideoController {
         `Processing ${images.length} images with voiceover: ${voiceover.filename}`
       );
 
-      // Get audio duration first
-      const audioDuration = await this.getAudioDuration(voiceover.path);
+      // Validate inputs using VideoUtils
+      const imagePaths = images.map((img) => img.path);
+      const validation = await VideoUtils.validateVideoInputs(
+        imagePaths,
+        voiceover.path
+      );
+
+      if (!validation.isValid) {
+        return ResponseUtils.send(
+          res,
+          ResponseUtils.validationError(validation.errors)
+        );
+      }
+
+      // Get audio duration using VideoUtils
+      const audioDuration = await VideoUtils.estimateAudioDuration(
+        voiceover.path,
+        60
+      );
       console.log(`Audio duration: ${audioDuration} seconds`);
+
+      // Generate safe output filename using VideoUtils
+      const outputFilename =
+        VideoUtils.createSafeVideoFilename("generated_video");
+      const outputPath = path.join("./output/videos", outputFilename);
 
       // Calculate duration per image
       const durationPerImage = audioDuration / images.length;
 
-      // Generate unique output filename
-      const outputFilename = `video-${Date.now()}.mp4`;
-      const outputPath = path.join("./output/videos", outputFilename);
-
-      // Create video with Ken Burns effect
+      // Create video using the working legacy method
       await this.createVideoWithImages(
         images,
         voiceover.path,
@@ -77,7 +96,7 @@ class VideoController {
         },
         processingTime: `${processingTime}ms`,
         settings: {
-          durationPerImage: `${durationPerImage.toFixed(2)}s`,
+          durationPerImage: `${(audioDuration / images.length).toFixed(2)}s`,
           totalImages: images.length,
         },
       };
@@ -85,55 +104,31 @@ class VideoController {
       // Save to mappings.json
       await this.saveMappingInfo(mapping);
 
-      res.json({
-        success: true,
-        message: "Video generated successfully",
-        data: {
-          videoFile: outputFilename,
-          downloadUrl: `/api/video/download/${outputFilename}`,
-          previewUrl: `/api/video/preview/${outputFilename}`,
-          processingTime: `${processingTime}ms`,
-          mapping: mapping,
-        },
-      });
+      return ResponseUtils.send(
+        res,
+        ResponseUtils.success(
+          {
+            videoFile: outputFilename,
+            downloadUrl: `/api/video/download/${outputFilename}`,
+            previewUrl: `/api/video/preview/${outputFilename}`,
+            processingTime: `${processingTime}ms`,
+            mapping: mapping,
+          },
+          "Video generated successfully"
+        )
+      );
     } catch (error) {
       console.error("Video generation error:", error);
-      res.status(500).json({
-        error: "Video generation failed",
-        message: error.message,
-      });
+      return ResponseUtils.send(
+        res,
+        ResponseUtils.error("Video generation failed", 500, {
+          originalError: error.message,
+        })
+      );
     }
   }
 
-  // Get audio duration - simplified approach for now
-  async getAudioDuration(audioPath) {
-    return new Promise((resolve, reject) => {
-      try {
-        // For now, let's use a default duration or read from file metadata if possible
-        // You can also pass duration as a parameter in the request
-        const stats = require("fs").statSync(audioPath);
-
-        // Rough estimation: assume 128kbps MP3, calculate duration from file size
-        // This is an approximation: duration ≈ (file_size_in_bytes * 8) / (bitrate * 1000)
-        const fileSizeBytes = stats.size;
-        const estimatedBitrate = 128000; // 128 kbps
-        const estimatedDuration = (fileSizeBytes * 8) / estimatedBitrate;
-
-        console.log(
-          `Estimated audio duration: ${estimatedDuration.toFixed(2)} seconds`
-        );
-
-        // Use minimum of 5 seconds, maximum of 60 seconds for safety
-        const duration = Math.max(5, Math.min(60, estimatedDuration));
-        resolve(duration);
-      } catch (error) {
-        console.log("Could not estimate duration, using default 10 seconds");
-        resolve(10); // Default fallback
-      }
-    });
-  }
-
-  // Create video with Ken Burns effect
+  // Create video with Ken Burns effect (legacy method - consider using VideoUtils)
   async createVideoWithImages(images, audioPath, outputPath, durationPerImage) {
     return new Promise((resolve, reject) => {
       const command = ffmpeg();
@@ -213,7 +208,8 @@ class VideoController {
         mappings = JSON.parse(data);
       }
     } catch (error) {
-      console.log("Creating new mappings file");
+      // File doesn't exist, creating new mappings file
+      console.log("Creating new mappings file:", error.message);
     }
 
     mappings.push(mapping);
@@ -226,15 +222,19 @@ class VideoController {
       const filename = req.params.filename;
       const videoPath = path.join("./output/videos", filename);
 
-      if (await fs.pathExists(videoPath)) {
+      const fileExists = await DirectoryUtils.fileExists(videoPath);
+      if (fileExists) {
         res.download(videoPath);
       } else {
-        res.status(404).json({ error: "Video not found" });
+        return ResponseUtils.send(res, ResponseUtils.notFound("Video file"));
       }
     } catch (error) {
-      res
-        .status(500)
-        .json({ error: "Download failed", message: error.message });
+      return ResponseUtils.send(
+        res,
+        ResponseUtils.error("Download failed", 500, {
+          originalError: error.message,
+        })
+      );
     }
   }
 
@@ -244,7 +244,8 @@ class VideoController {
       const filename = req.params.filename;
       const videoPath = path.join("./output/videos", filename);
 
-      if (await fs.pathExists(videoPath)) {
+      const fileExists = await DirectoryUtils.fileExists(videoPath);
+      if (fileExists) {
         const stat = await fs.stat(videoPath);
         const fileSize = stat.size;
         const range = req.headers.range;
@@ -272,10 +273,15 @@ class VideoController {
           fs.createReadStream(videoPath).pipe(res);
         }
       } else {
-        res.status(404).json({ error: "Video not found" });
+        return ResponseUtils.send(res, ResponseUtils.notFound("Video file"));
       }
     } catch (error) {
-      res.status(500).json({ error: "Preview failed", message: error.message });
+      return ResponseUtils.send(
+        res,
+        ResponseUtils.error("Preview failed", 500, {
+          originalError: error.message,
+        })
+      );
     }
   }
 
@@ -284,17 +290,27 @@ class VideoController {
     try {
       const mappingsFile = "./output/mappings.json";
 
-      if (await fs.pathExists(mappingsFile)) {
+      const fileExists = await DirectoryUtils.fileExists(mappingsFile);
+      if (fileExists) {
         const data = await fs.readFile(mappingsFile, "utf8");
         const mappings = JSON.parse(data);
-        res.json({ success: true, mappings });
+        return ResponseUtils.send(
+          res,
+          ResponseUtils.success({ mappings }, "Mappings retrieved successfully")
+        );
       } else {
-        res.json({ success: true, mappings: [] });
+        return ResponseUtils.send(
+          res,
+          ResponseUtils.success({ mappings: [] }, "No mappings found")
+        );
       }
     } catch (error) {
-      res
-        .status(500)
-        .json({ error: "Failed to get mappings", message: error.message });
+      return ResponseUtils.send(
+        res,
+        ResponseUtils.error("Failed to get mappings", 500, {
+          originalError: error.message,
+        })
+      );
     }
   }
 }

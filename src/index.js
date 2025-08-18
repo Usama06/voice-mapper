@@ -3,6 +3,7 @@ const express = require("express");
 const cors = require("cors");
 const path = require("path");
 const setVideoRoutes = require("./routes/video.route");
+const { ResponseUtils, DirectoryUtils } = require("./utils");
 
 const app = express();
 
@@ -20,22 +21,46 @@ app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 app.use("/output", express.static(path.join(__dirname, "../output")));
 
-// Health check route
+// Health check route with ResponseUtils
 app.get("/health", (req, res) => {
-  res.status(200).json({
-    status: "OK",
-    message: "Voice Mapper API is running successfully",
-    timestamp: new Date().toISOString(),
-    port: PORT,
-    environment: process.env.NODE_ENV || "development",
-  });
+  return ResponseUtils.send(
+    res,
+    ResponseUtils.success(
+      {
+        status: "OK",
+        port: PORT,
+        environment: process.env.NODE_ENV || "development",
+      },
+      "Voice Mapper API is running successfully"
+    )
+  );
 });
 
-// Routes setup
-setVideoRoutes(app);
+// Global error handler (must be after routes)
+app.use(ResponseUtils.globalErrorHandler);
 
 // Start the server
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
+
+// Initialize application with async setup
+async function startServer() {
+  try {
+    // Initialize directories
+    await DirectoryUtils.initializeAppDirectories();
+
+    // Setup routes (async)
+    await setVideoRoutes(app);
+
+    app.listen(PORT, () => {
+      console.log(`✅ Server is running on port ${PORT}`);
+      console.log(`📁 All directories initialized`);
+      console.log(`🔗 Health check: http://localhost:${PORT}/health`);
+      console.log(`📽️ Video API: http://localhost:${PORT}/api/video`);
+    });
+  } catch (error) {
+    console.error("❌ Failed to start server:", error);
+    process.exit(1);
+  }
+}
+
+startServer();
