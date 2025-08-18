@@ -4,6 +4,7 @@ const ffmpeg = require("fluent-ffmpeg");
 const {
   VideoUtils,
   VideoEffectsUtils,
+  AudioUtils,
   ResponseUtils,
   DirectoryUtils,
 } = require("../utils");
@@ -39,13 +40,55 @@ class VideoController {
       const { images, voiceover } = req.videoData;
 
       console.log(
-        `Processing ${images.length} images with voiceover: ${voiceover.filename}`
+        `Processing ${images.length} images with ${voiceover.length} voiceover file(s)`
       );
 
       const imagePaths = images.map((img) => img.path);
+
+      // Handle multiple audio files - concatenate if needed
+      let finalAudioPath;
+      let audioDuration;
+
+      if (voiceover.length === 1) {
+        // Single audio file
+        finalAudioPath = voiceover[0].path;
+        audioDuration = await VideoUtils.estimateAudioDuration(
+          finalAudioPath,
+          60
+        );
+      } else {
+        // Multiple audio files - concatenate them
+        console.log(`🎵 Concatenating ${voiceover.length} audio files...`);
+
+        const audioPaths = voiceover.map((audio) => audio.path);
+        const concatenatedFilename = AudioUtils.createSafeAudioFilename(
+          "concatenated_voiceover"
+        );
+        const concatenatedPath = path.join(
+          "./uploads/audio",
+          concatenatedFilename
+        );
+
+        const concatenationResult = await AudioUtils.concatenateAudioFiles(
+          audioPaths,
+          concatenatedPath,
+          {
+            fadeTransition: 0.5, // 500ms smooth transition between audio files
+            normalizeLevels: true,
+          }
+        );
+
+        finalAudioPath = concatenationResult.outputPath;
+        audioDuration = concatenationResult.totalDuration;
+
+        console.log(
+          `✅ Audio concatenation completed. Total duration: ${audioDuration}s`
+        );
+      }
+
       const validation = await VideoUtils.validateVideoInputs(
         imagePaths,
-        voiceover.path
+        finalAudioPath
       );
 
       if (!validation.isValid) {
@@ -55,10 +98,6 @@ class VideoController {
         );
       }
 
-      const audioDuration = await VideoUtils.estimateAudioDuration(
-        voiceover.path,
-        60
-      );
       console.log(`Audio duration: ${audioDuration} seconds`);
 
       const outputFilename =
@@ -69,7 +108,7 @@ class VideoController {
 
       await this.createVideoWithImages(
         images,
-        voiceover.path,
+        finalAudioPath,
         outputPath,
         durationPerImage
       );
@@ -84,12 +123,24 @@ class VideoController {
           originalName: img.originalname,
           size: img.size,
         })),
-        voiceover: {
-          filename: voiceover.filename,
-          originalName: voiceover.originalname,
-          size: voiceover.size,
-          duration: audioDuration,
-        },
+        voiceover:
+          voiceover.length === 1
+            ? {
+                filename: voiceover[0].filename,
+                originalName: voiceover[0].originalname,
+                size: voiceover[0].size,
+                duration: audioDuration,
+              }
+            : {
+                type: "concatenated",
+                sourceFiles: voiceover.map((audio) => ({
+                  filename: audio.filename,
+                  originalName: audio.originalname,
+                  size: audio.size,
+                })),
+                totalDuration: audioDuration,
+                concatenatedFile: path.basename(finalAudioPath),
+              },
         output: {
           filename: outputFilename,
           path: outputPath,
@@ -98,6 +149,7 @@ class VideoController {
         settings: {
           durationPerImage: `${(audioDuration / images.length).toFixed(2)}s`,
           totalImages: images.length,
+          totalAudioFiles: voiceover.length,
         },
       };
 
@@ -331,7 +383,10 @@ class VideoController {
       const { images, voiceover } = req.videoData;
       const effects = req.body.effects || {};
 
-      console.log(`Processing ${images.length} images with effects:`, effects);
+      console.log(
+        `Processing ${images.length} images with ${voiceover.length} voiceover file(s) and effects:`,
+        effects
+      );
 
       const effectsValidation = VideoEffectsUtils.validateEffects(effects);
       if (!effectsValidation.isValid) {
@@ -350,9 +405,53 @@ class VideoController {
       }
 
       const imagePaths = images.map((img) => img.path);
+
+      // Handle multiple audio files - concatenate if needed
+      let finalAudioPath;
+      let audioDuration;
+
+      if (voiceover.length === 1) {
+        // Single audio file
+        finalAudioPath = voiceover[0].path;
+        audioDuration = await VideoUtils.estimateAudioDuration(
+          finalAudioPath,
+          60
+        );
+      } else {
+        // Multiple audio files - concatenate them
+        console.log(
+          `🎵 Concatenating ${voiceover.length} audio files for effects video...`
+        );
+
+        const audioPaths = voiceover.map((audio) => audio.path);
+        const concatenatedFilename = AudioUtils.createSafeAudioFilename(
+          "effects_concatenated_voiceover"
+        );
+        const concatenatedPath = path.join(
+          "./uploads/audio",
+          concatenatedFilename
+        );
+
+        const concatenationResult = await AudioUtils.concatenateAudioFiles(
+          audioPaths,
+          concatenatedPath,
+          {
+            fadeTransition: 0.5, // 500ms smooth transition between audio files
+            normalizeLevels: true,
+          }
+        );
+
+        finalAudioPath = concatenationResult.outputPath;
+        audioDuration = concatenationResult.totalDuration;
+
+        console.log(
+          `✅ Audio concatenation completed. Total duration: ${audioDuration}s`
+        );
+      }
+
       const validation = await VideoUtils.validateVideoInputs(
         imagePaths,
-        voiceover.path
+        finalAudioPath
       );
 
       if (!validation.isValid) {
@@ -362,10 +461,6 @@ class VideoController {
         );
       }
 
-      const audioDuration = await VideoUtils.estimateAudioDuration(
-        voiceover.path,
-        60
-      );
       console.log(`Audio duration: ${audioDuration} seconds`);
 
       const outputFilename = VideoUtils.createSafeVideoFilename(
@@ -375,7 +470,7 @@ class VideoController {
 
       await this.createVideoWithEffectsInternal(
         imagePaths,
-        voiceover.path,
+        finalAudioPath,
         outputPath,
         audioDuration,
         finalEffects
@@ -392,12 +487,24 @@ class VideoController {
           originalName: img.originalname,
           size: img.size,
         })),
-        voiceover: {
-          filename: voiceover.filename,
-          originalName: voiceover.originalname,
-          size: voiceover.size,
-          duration: audioDuration,
-        },
+        voiceover:
+          voiceover.length === 1
+            ? {
+                filename: voiceover[0].filename,
+                originalName: voiceover[0].originalname,
+                size: voiceover[0].size,
+                duration: audioDuration,
+              }
+            : {
+                type: "concatenated",
+                sourceFiles: voiceover.map((audio) => ({
+                  filename: audio.filename,
+                  originalName: audio.originalname,
+                  size: audio.size,
+                })),
+                totalDuration: audioDuration,
+                concatenatedFile: path.basename(finalAudioPath),
+              },
         effects: finalEffects,
         output: {
           filename: outputFilename,
@@ -407,6 +514,7 @@ class VideoController {
         settings: {
           durationPerImage: `${(audioDuration / images.length).toFixed(2)}s`,
           totalImages: images.length,
+          totalAudioFiles: voiceover.length,
           effectsApplied: Object.keys(finalEffects).filter(
             (key) => finalEffects[key] !== null
           ),

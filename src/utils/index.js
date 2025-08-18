@@ -4,6 +4,7 @@ const FileUploadUtils = require("./fileUpload.utils");
 const ResponseUtils = require("./response.utils");
 const VideoUtils = require("./video.utils");
 const VideoEffectsUtils = require("./videoEffects.utils");
+const AudioUtils = require("./audio.utils");
 
 module.exports = {
   DirectoryUtils,
@@ -11,4 +12,5 @@ module.exports = {
   ResponseUtils,
   VideoUtils,
   VideoEffectsUtils,
+  AudioUtils,
 };

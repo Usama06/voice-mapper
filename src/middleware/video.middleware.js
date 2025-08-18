@@ -56,9 +56,11 @@ class VideoMiddleware {
       }
 
       const images = req.files.images;
-      const voiceover = req.files.voiceover[0];
+      const voiceover = req.files.voiceover; // Now supports multiple files
 
-      const maxImages = parseInt(process.env.MAX_IMAGE_COUNT, 10) || 10;
+      const maxImages = parseInt(process.env.MAX_IMAGE_COUNT, 10) || 100;
+      const maxAudio = parseInt(process.env.MAX_AUDIO_COUNT, 10) || 50;
+
       if (images.length > maxImages) {
         return ResponseUtils.send(
           res,
@@ -66,7 +68,21 @@ class VideoMiddleware {
         );
       }
 
-      req.videoData = { images, voiceover, imageCount: images.length };
+      if (voiceover.length > maxAudio) {
+        return ResponseUtils.send(
+          res,
+          ResponseUtils.validationError(
+            `Maximum ${maxAudio} audio files allowed`
+          )
+        );
+      }
+
+      req.videoData = {
+        images,
+        voiceover, // Array of audio files
+        imageCount: images.length,
+        audioCount: voiceover.length,
+      };
       next();
     } catch (error) {
       return ResponseUtils.send(
