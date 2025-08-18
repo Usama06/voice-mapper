@@ -77,23 +77,42 @@ class AudioUtils {
 
       // Run concat demuxer
       await new Promise((res, rej) => {
+        // Determine output format and codec based on file extension
+        const ext = path.extname(outputPath).toLowerCase();
+        let audioCodec, audioFormat;
+
+        switch (ext) {
+          case ".mp3":
+            audioCodec = "libmp3lame";
+            audioFormat = "mp3";
+            break;
+          case ".wav":
+            audioCodec = "pcm_s16le";
+            audioFormat = "wav";
+            break;
+          case ".aac":
+            audioCodec = "aac";
+            audioFormat = "adts";
+            break;
+          default:
+            // Default to MP3 for unknown extensions
+            audioCodec = "libmp3lame";
+            audioFormat = "mp3";
+            break;
+        }
+
         const c = ffmpeg()
           .input(listPath)
           .inputOptions(["-f", "concat", "-safe", "0"])
-          .outputOptions([
-            "-c:a",
-            "aac",
-            "-b:a",
-            "128k",
-            "-ar",
-            "44100",
-            "-ac",
-            "2",
-          ])
+          .audioCodec(audioCodec)
+          .format(audioFormat)
+          .audioBitrate("128k")
+          .audioFrequency(44100)
+          .audioChannels(2)
           .output(outputPath)
           .on("start", (cmd) => console.log("🎵 FFmpeg concat started:", cmd))
           .on("stderr", (line) => {
-            if (line && line.trim()) console.log(`[ffmpeg concat] ${line}`);
+            if (line?.trim()) console.log(`[ffmpeg concat] ${line}`);
           })
           .on("progress", (p) => {
             if (p.percent)
@@ -128,8 +147,7 @@ class AudioUtils {
       ffmpeg.ffprobe(filePath, (err, info) => {
         if (err) return reject(err);
         try {
-          const stream =
-            info.streams && info.streams.find((s) => s.codec_type === "audio");
+          const stream = info.streams?.find((s) => s.codec_type === "audio");
           const duration =
             parseFloat(stream?.duration ?? info.format?.duration ?? 0) || 0;
           resolve(duration);
