@@ -1,6 +1,10 @@
 const ffmpeg = require("fluent-ffmpeg");
 const path = require("path");
 const DirectoryUtils = require("./directory.utils");
+const {
+  SUPPORTED_IMAGE_FORMATS,
+  SUPPORTED_AUDIO_FORMATS,
+} = require("../constants/constants");
 
 class VideoUtils {
   static getVideoConfig() {
@@ -27,18 +31,70 @@ class VideoUtils {
   }
 
   static async estimateAudioDuration(audioPath, fallbackDuration = 60) {
+    console.log(`🔍 Attempting to get duration for: ${audioPath}`);
+
+    // Check if file exists first
+    const fileExists = await DirectoryUtils.fileExists(audioPath);
+    if (!fileExists) {
+      console.warn(`❌ Audio file does not exist: ${audioPath}`);
+      console.warn(
+        "⚠️ Could not determine audio duration, using fallback:",
+        fallbackDuration
+      );
+      return fallbackDuration;
+    }
+
+    console.log(`✅ Audio file exists, using FFmpeg to extract duration...`);
+
     return new Promise((resolve) => {
-      ffmpeg.ffprobe(audioPath, (err, metadata) => {
-        if (err || !metadata?.format?.duration) {
-          console.warn(
-            "⚠️ Could not determine audio duration, using fallback:",
-            fallbackDuration
+      let duration = null;
+
+      // Use FFmpeg to probe duration by attempting to process the audio
+      // We'll extract duration from the FFmpeg output before it starts encoding
+      ffmpeg(audioPath)
+        .format("null") // Output to null format (no actual output file)
+        .on("start", (commandLine) => {
+          console.log("🔍 FFmpeg duration probe started...");
+        })
+        .on("stderr", (stderrLine) => {
+          // Look for duration in FFmpeg stderr output
+          // Format: "Duration: 00:03:08.14, start: 0.000000, bitrate: 128 kb/s"
+          const durationMatch = stderrLine.match(
+            /Duration:\s*(\d{2}):(\d{2}):(\d{2}\.\d{2})/
           );
-          resolve(fallbackDuration);
-        } else {
-          resolve(metadata.format.duration);
-        }
-      });
+          if (durationMatch && !duration) {
+            const hours = parseInt(durationMatch[1], 10);
+            const minutes = parseInt(durationMatch[2], 10);
+            const seconds = parseFloat(durationMatch[3]);
+            duration = hours * 3600 + minutes * 60 + seconds;
+            console.log(`✅ Audio duration found: ${duration} seconds`);
+          }
+        })
+        .on("error", (err) => {
+          if (duration) {
+            // We got duration before the error, use it
+            resolve(duration);
+          } else {
+            console.warn("❌ FFmpeg error:", err.message);
+            console.warn(
+              "⚠️ Could not determine audio duration, using fallback:",
+              fallbackDuration
+            );
+            resolve(fallbackDuration);
+          }
+        })
+        .on("end", () => {
+          if (duration) {
+            resolve(duration);
+          } else {
+            console.warn(
+              "⚠️ No duration found in FFmpeg output, using fallback:",
+              fallbackDuration
+            );
+            resolve(fallbackDuration);
+          }
+        })
+        .save("NUL"); // Save to null device on Windows (won't actually create a file)
     });
   }
 
@@ -168,11 +224,11 @@ class VideoUtils {
   }
 
   static getSupportedImageFormats() {
-    return [".jpg", ".jpeg", ".png", ".bmp", ".gif", ".tiff", ".webp"];
+    return SUPPORTED_IMAGE_FORMATS;
   }
 
   static getSupportedAudioFormats() {
-    return [".mp3", ".wav", ".aac", ".m4a", ".ogg", ".flac"];
+    return SUPPORTED_AUDIO_FORMATS;
   }
 
   static createProgressCallback(onProgress, totalDuration) {
@@ -192,6 +248,34 @@ class VideoUtils {
         });
       }
     };
+  }
+
+  // Parse FFmpeg timemark (format: "00:01:30.45") to seconds
+  static parseTimemark(timemark) {
+    if (!timemark || typeof timemark !== "string") {
+      return 0;
+    }
+
+    try {
+      const parts = timemark.split(":");
+      if (parts.length !== 3) {
+        return 0;
+      }
+
+      const hours = parseFloat(parts[0]) || 0;
+      const minutes = parseFloat(parts[1]) || 0;
+      const seconds = parseFloat(parts[2]) || 0;
+
+      return hours * 3600 + minutes * 60 + seconds;
+    } catch (error) {
+      console.warn(
+        "Failed to parse timemark:",
+        timemark,
+        "Error:",
+        error.message
+      );
+      return 0;
+    }
   }
 }
 

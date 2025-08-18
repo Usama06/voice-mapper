@@ -21,6 +21,39 @@ async function setVideoRoutes(app) {
       videoController.generateVideo.bind(videoController)
     );
 
+    // Video generation with effects
+    router.post(
+      "/generate-with-effects",
+      videoMiddleware.uploadFiles(),
+      videoMiddleware.handleUploadError.bind(videoMiddleware),
+      videoMiddleware.validateVideoRequest.bind(videoMiddleware),
+      videoController.generateVideoWithEffects.bind(videoController)
+    );
+
+    // Get available effects and presets
+    router.get(
+      "/effects",
+      videoController.getAvailableEffects.bind(videoController)
+    );
+
+    // Preview effect configuration
+    router.get(
+      "/effects/preview/:effectType/:effectName",
+      videoController.previewEffect.bind(videoController)
+    );
+
+    // Preview preset configuration
+    router.get(
+      "/effects/preset/:preset",
+      (req, res, next) => {
+        req.params.effectType = "preset";
+        req.params.effectName = req.params.preset;
+        req.query.preset = req.params.preset;
+        next();
+      },
+      videoController.previewEffect.bind(videoController)
+    );
+
     router.get(
       "/download/:filename",
       videoController.downloadVideo.bind(videoController)
