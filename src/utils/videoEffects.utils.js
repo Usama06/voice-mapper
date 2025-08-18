@@ -187,20 +187,39 @@ class VideoEffectsUtils {
 
     const videoFilters = [];
 
-    // Generate filters for each image (based on working video.utils.js approach)
+    // Generate filters for each image with fade in/out for smooth transitions
     imagePaths.forEach((_, index) => {
-      videoFilters.push(
+      const fadeOutStart =
+        imageDuration - (index === imagePaths.length - 1 ? 0 : 0.5); // End fade-out
+
+      let filterChain =
         `[${index}:v]scale=${config.width}:${config.height}:force_original_aspect_ratio=increase,` +
-          `crop=${config.width}:${config.height},` +
-          `setpts=PTS-STARTPTS,` +
-          `zoompan=z='min(zoom+0.001,1.3)':d=${Math.round(
-            imageDuration * config.fps
-          )}:` +
-          `x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=${config.width}x${config.height}:fps=${config.fps}[v${index}]`
-      );
+        `crop=${config.width}:${config.height},` +
+        `setpts=PTS-STARTPTS,` +
+        `zoompan=z='min(zoom+0.001,1.3)':d=${Math.round(
+          imageDuration * config.fps
+        )}:` +
+        `x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=${config.width}x${config.height}:fps=${config.fps}`;
+
+      // Add fade effects for smooth transitions (except for single image)
+      if (imagePaths.length > 1) {
+        if (index === 0) {
+          // First image: fade out at the end
+          filterChain += `,fade=t=out:st=${fadeOutStart}:d=0.5`;
+        } else if (index === imagePaths.length - 1) {
+          // Last image: fade in at the start
+          filterChain += `,fade=t=in:st=0:d=0.5`;
+        } else {
+          // Middle images: fade in and out
+          filterChain += `,fade=t=in:st=0:d=0.5,fade=t=out:st=${fadeOutStart}:d=0.5`;
+        }
+      }
+
+      filterChain += `[v${index}]`;
+      videoFilters.push(filterChain);
     });
 
-    // Concatenation
+    // Concatenation with proper timing
     if (imagePaths.length === 1) {
       videoFilters.push(`[v0]copy[outv]`);
     } else {
