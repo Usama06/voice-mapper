@@ -173,16 +173,13 @@ class VideoEffectsUtils {
     effects = {}
   ) {
     const config = VIDEO_CONFIG_DEFAULTS;
-
     const imageDuration = audioDuration / imagePaths.length;
-    const transitionDuration =
-      effects.transitionDuration || config.transitionDuration;
 
     const command = ffmpeg();
 
     // Add image inputs
     imagePaths.forEach((imagePath) => {
-      command.input(imagePath).loop(imageDuration + transitionDuration);
+      command.input(imagePath);
     });
 
     // Add audio input
@@ -190,117 +187,47 @@ class VideoEffectsUtils {
 
     const videoFilters = [];
 
-    // Apply motion effects to each image
+    // Generate filters for each image (based on working video.utils.js approach)
     imagePaths.forEach((_, index) => {
-      const motionFilter = VideoEffectsUtils.generateMotionFilter(
-        index,
-        effects.motion || "kenburns",
-        config.width,
-        config.height,
-        imageDuration + transitionDuration,
-        config.fps
+      videoFilters.push(
+        `[${index}:v]scale=${config.width}:${config.height}:force_original_aspect_ratio=increase,` +
+          `crop=${config.width}:${config.height},` +
+          `setpts=PTS-STARTPTS,` +
+          `zoompan=z='min(zoom+0.001,1.3)':d=${Math.round(
+            imageDuration * config.fps
+          )}:` +
+          `x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=${config.width}x${config.height}:fps=${config.fps}[v${index}]`
       );
-      videoFilters.push(motionFilter);
     });
 
-    // Apply color effects if specified
-    if (effects.color) {
-      imagePaths.forEach((_, index) => {
-        const colorFilter = VideoEffectsUtils.generateColorFilter(
-          `[v${index}]`,
-          effects.color
-        );
-        videoFilters.push(colorFilter);
-        // Update the label reference for next step
-        videoFilters[videoFilters.length - 1] = videoFilters[
-          videoFilters.length - 1
-        ].replace("[colored]", `[c${index}]`);
-      });
-    }
-
-    // Apply overlay effects if specified
-    if (effects.overlay) {
-      imagePaths.forEach((_, index) => {
-        const inputLabel = effects.color ? `[c${index}]` : `[v${index}]`;
-        const overlayFilter = VideoEffectsUtils.generateOverlayFilter(
-          inputLabel,
-          effects.overlay,
-          config.width,
-          config.height
-        );
-        videoFilters.push(overlayFilter);
-        // Update the label reference for next step
-        videoFilters[videoFilters.length - 1] = videoFilters[
-          videoFilters.length - 1
-        ].replace("[colored]", `[o${index}]`);
-      });
-    }
-
-    // Apply transitions between clips if specified
-    if (effects.transition && imagePaths.length > 1) {
-      for (let i = 0; i < imagePaths.length - 1; i++) {
-        const fromLabel = effects.overlay
-          ? `[o${i}]`
-          : effects.color
-          ? `[c${i}]`
-          : `[v${i}]`;
-        const toLabel = effects.overlay
-          ? `[o${i + 1}]`
-          : effects.color
-          ? `[c${i + 1}]`
-          : `[v${i + 1}]`;
-
-        const transitionFilter = VideoEffectsUtils.generateTransitionFilter(
-          i,
-          i + 1,
-          effects.transition,
-          transitionDuration
-        )
-          .replace(`[v${i}]`, fromLabel)
-          .replace(`[v${i + 1}]`, toLabel);
-
-        videoFilters.push(transitionFilter);
-      }
-    }
-
-    // Final concatenation
-    const finalInputs = [];
-    if (effects.transition && imagePaths.length > 1) {
-      // Use transition outputs
-      for (let i = 1; i < imagePaths.length; i++) {
-        finalInputs.push(`[trans${i}]`);
-      }
+    // Concatenation
+    if (imagePaths.length === 1) {
+      videoFilters.push(`[v0]copy[outv]`);
     } else {
-      // Use direct outputs
-      for (let i = 0; i < imagePaths.length; i++) {
-        if (effects.overlay) {
-          finalInputs.push(`[o${i}]`);
-        } else if (effects.color) {
-          finalInputs.push(`[c${i}]`);
-        } else {
-          finalInputs.push(`[v${i}]`);
-        }
-      }
+      const concatInputs = imagePaths.map((_, index) => `[v${index}]`).join("");
+      const concatFilter = `${concatInputs}concat=n=${imagePaths.length}:v=1:a=0[outv]`;
+      videoFilters.push(concatFilter);
     }
-
-    const concatFilter = `${finalInputs.join("")}concat=n=${
-      finalInputs.length
-    }:v=1:a=0[outv]`;
-    videoFilters.push(concatFilter);
 
     command.complexFilter(videoFilters, ["outv"]);
 
     command
-      .map("[outv]")
-      .map(`${imagePaths.length}:a`)
-      .videoCodec(config.videoCodec)
-      .audioCodec(config.audioCodec)
-      .fps(config.fps)
       .outputOptions([
-        `-preset ${config.preset}`,
-        `-crf ${config.crf}`,
-        "-movflags +faststart",
-        "-shortest",
+        `-map`,
+        `${imagePaths.length}:a`,
+        `-c:v`,
+        config.videoCodec,
+        `-c:a`,
+        config.audioCodec,
+        `-preset`,
+        config.preset,
+        `-crf`,
+        config.crf.toString(),
+        `-r`,
+        config.fps.toString(),
+        `-movflags`,
+        `+faststart`,
+        `-shortest`,
       ])
       .output(outputPath);
 
