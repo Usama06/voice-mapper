@@ -33,7 +33,6 @@ class VideoUtils {
   static async estimateAudioDuration(audioPath, fallbackDuration = 60) {
     console.log(`🔍 Attempting to get duration for: ${audioPath}`);
 
-    // Check if file exists first
     const fileExists = await DirectoryUtils.fileExists(audioPath);
     if (!fileExists) {
       console.warn(`❌ Audio file does not exist: ${audioPath}`);
@@ -49,16 +48,12 @@ class VideoUtils {
     return new Promise((resolve) => {
       let duration = null;
 
-      // Use FFmpeg to probe duration by attempting to process the audio
-      // We'll extract duration from the FFmpeg output before it starts encoding
       ffmpeg(audioPath)
-        .format("null") // Output to null format (no actual output file)
+        .format("null")
         .on("start", (commandLine) => {
           console.log("🔍 FFmpeg duration probe started...");
         })
         .on("stderr", (stderrLine) => {
-          // Look for duration in FFmpeg stderr output
-          // Format: "Duration: 00:03:08.14, start: 0.000000, bitrate: 128 kb/s"
           const durationMatch = stderrLine.match(
             /Duration:\s*(\d{2}):(\d{2}):(\d{2}\.\d{2})/
           );
@@ -72,7 +67,6 @@ class VideoUtils {
         })
         .on("error", (err) => {
           if (duration) {
-            // We got duration before the error, use it
             resolve(duration);
           } else {
             console.warn("❌ FFmpeg error:", err.message);
@@ -94,88 +88,57 @@ class VideoUtils {
             resolve(fallbackDuration);
           }
         })
-        .save("NUL"); // Save to null device on Windows (won't actually create a file)
+        .save("NUL");
     });
-  }
-
-  static calculateKenBurnsEffect(index, totalImages, config) {
-    const { width, height, kenBurnsZoom, kenBurnsDuration } = config;
-    const isZoomIn = index % 2 === 0;
-
-    if (isZoomIn) {
-      return {
-        startScale: 1.0,
-        endScale: kenBurnsZoom,
-        startX: 0,
-        startY: 0,
-        endX: Math.round((width * (kenBurnsZoom - 1)) / 2),
-        endY: Math.round((height * (kenBurnsZoom - 1)) / 2),
-        duration: kenBurnsDuration,
-      };
-    } else {
-      return {
-        startScale: kenBurnsZoom,
-        endScale: 1.0,
-        startX: Math.round((width * (kenBurnsZoom - 1)) / 2),
-        startY: Math.round((height * (kenBurnsZoom - 1)) / 2),
-        endX: 0,
-        endY: 0,
-        duration: kenBurnsDuration,
-      };
-    }
-  }
-
-  static generateImageFilter(imageIndex, totalImages, imageDuration, config) {
-    const { width, height } = config;
-    const effect = VideoUtils.calculateKenBurnsEffect(
-      imageIndex,
-      totalImages,
-      config
-    );
-
-    return (
-      `[${imageIndex}:v]scale=${width}:${height}:force_original_aspect_ratio=increase,` +
-      `crop=${width}:${height},` +
-      `zoompan=z='if(lte(zoom,1.0),${effect.startScale},` +
-      `${effect.startScale}+((${effect.endScale}-${effect.startScale})*on/${
-        imageDuration * 30
-      }))':` +
-      `x='if(lte(zoom,1.0),${effect.startX},` +
-      `${effect.startX}+((${effect.endX}-${effect.startX})*on/${
-        imageDuration * 30
-      }))':` +
-      `y='if(lte(zoom,1.0),${effect.startY},` +
-      `${effect.startY}+((${effect.endY}-${effect.startY})*on/${
-        imageDuration * 30
-      }))':` +
-      `d=${imageDuration * 30}:s=${width}x${height}[v${imageIndex}]`
-    );
   }
 
   static createVideoCommand(imagePaths, audioPath, outputPath, audioDuration) {
     const config = VideoUtils.getVideoConfig();
     const imageDuration = audioDuration / imagePaths.length;
+    const transitionDuration = 2.0;
 
     const command = ffmpeg();
 
     imagePaths.forEach((imagePath) => {
-      command.input(imagePath).loop(imageDuration);
+      command.input(imagePath);
     });
 
     command.input(audioPath);
 
-    const videoFilters = imagePaths.map((_, index) =>
-      VideoUtils.generateImageFilter(
-        index,
-        imagePaths.length,
-        imageDuration,
-        config
-      )
-    );
+    const videoFilters = [];
 
-    const concatInputs = imagePaths.map((_, index) => `[v${index}]`).join("");
-    const concatFilter = `${concatInputs}concat=n=${imagePaths.length}:v=1:a=0[outv]`;
-    videoFilters.push(concatFilter);
+    imagePaths.forEach((_, index) => {
+      videoFilters.push(
+        `[${index}:v]scale=${config.width}:${config.height}:force_original_aspect_ratio=increase,` +
+          `crop=${config.width}:${config.height},` +
+          `setpts=PTS-STARTPTS,` +
+          `zoompan=z='min(zoom+0.001,1.3)':d=${Math.round(
+            imageDuration * config.fps
+          )}:` +
+          `x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=${config.width}x${config.height}:fps=${config.fps}[v${index}]`
+      );
+    });
+
+    if (imagePaths.length === 1) {
+      videoFilters.push(`[v0]copy[outv]`);
+    } else if (imagePaths.length === 2) {
+      videoFilters.push(
+        `[v0][v1]xfade=transition=smoothleft:duration=${transitionDuration}:offset=${
+          imageDuration - transitionDuration
+        }[outv]`
+      );
+    } else {
+      let currentStream = `[v0]`;
+      for (let i = 1; i < imagePaths.length; i++) {
+        const offset = i * imageDuration - transitionDuration;
+        const outputLabel =
+          i === imagePaths.length - 1 ? `[outv]` : `[stream${i}]`;
+        videoFilters.push(
+          `${currentStream}[v${i}]xfade=transition=smoothleft:duration=${transitionDuration}:offset=${offset}${outputLabel}`
+        );
+        currentStream = outputLabel;
+      }
+    }
 
     command.complexFilter(videoFilters, ["outv"]);
 
@@ -250,7 +213,6 @@ class VideoUtils {
     };
   }
 
-  // Parse FFmpeg timemark (format: "00:01:30.45") to seconds
   static parseTimemark(timemark) {
     if (!timemark || typeof timemark !== "string") {
       return 0;

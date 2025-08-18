@@ -135,6 +135,28 @@ const SUPPORTED_AUDIO_FORMATS = [
   ".flac",
 ];
 
+// Upload Configuration Constants
+const UPLOAD_DESTINATIONS = {
+  images: "./uploads/images",
+  voiceover: "./uploads/audio",
+};
+
+const ALLOWED_FILE_TYPES = {
+  images: ["image/jpeg", "image/png", "image/gif", "image/bmp", "image/webp"],
+  voiceover: ["audio/mpeg", "audio/wav", "audio/mp3", "audio/aac", "audio/ogg"],
+};
+
+const UPLOAD_FIELD_CONFIGS = [
+  {
+    name: "images",
+    maxCount: parseInt(process.env.MAX_IMAGE_COUNT, 10) || 10,
+  },
+  {
+    name: "voiceover",
+    maxCount: parseInt(process.env.MAX_AUDIO_COUNT, 10) || 1,
+  },
+];
+
 // Export all constants
 module.exports = {
   VIDEO_TRANSITIONS,
@@ -145,4 +167,7 @@ module.exports = {
   VIDEO_CONFIG_DEFAULTS,
   SUPPORTED_IMAGE_FORMATS,
   SUPPORTED_AUDIO_FORMATS,
+  UPLOAD_DESTINATIONS,
+  ALLOWED_FILE_TYPES,
+  UPLOAD_FIELD_CONFIGS,
 };

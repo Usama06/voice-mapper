@@ -8,7 +8,6 @@ const {
   DirectoryUtils,
 } = require("../utils");
 
-// Try to set FFmpeg path
 try {
   const ffmpegPath = require("@ffmpeg-installer/ffmpeg").path;
   ffmpeg.setFfmpegPath(ffmpegPath);
@@ -17,15 +16,12 @@ try {
   console.log("FFmpeg installer not found, trying system PATH");
 }
 
-// Try to set FFprobe path - use multiple fallback options
 try {
-  // Try to install and use @ffprobe-installer package if available
   const ffprobePath = require("@ffprobe-installer/ffprobe").path;
   ffmpeg.setFfprobePath(ffprobePath);
   console.log("FFprobe path (from installer):", ffprobePath);
 } catch (error) {
   try {
-    // Fallback: Try the standard FFmpeg installer package (might not have ffprobe)
     const ffmpegPath = require("@ffmpeg-installer/ffmpeg").path;
     const ffprobePath = ffmpegPath.replace("ffmpeg.exe", "ffprobe.exe");
     ffmpeg.setFfprobePath(ffprobePath);
@@ -36,19 +32,16 @@ try {
 }
 
 class VideoController {
-  // Generate video from images and voiceover
   async generateVideo(req, res) {
     try {
       const startTime = Date.now();
 
-      // Get validated data from middleware
       const { images, voiceover } = req.videoData;
 
       console.log(
         `Processing ${images.length} images with voiceover: ${voiceover.filename}`
       );
 
-      // Validate inputs using VideoUtils
       const imagePaths = images.map((img) => img.path);
       const validation = await VideoUtils.validateVideoInputs(
         imagePaths,
@@ -62,22 +55,18 @@ class VideoController {
         );
       }
 
-      // Get audio duration using VideoUtils
       const audioDuration = await VideoUtils.estimateAudioDuration(
         voiceover.path,
         60
       );
       console.log(`Audio duration: ${audioDuration} seconds`);
 
-      // Generate safe output filename using VideoUtils
       const outputFilename =
         VideoUtils.createSafeVideoFilename("generated_video");
       const outputPath = path.join("./output/videos", outputFilename);
 
-      // Calculate duration per image
       const durationPerImage = audioDuration / images.length;
 
-      // Create video using the working legacy method
       await this.createVideoWithImages(
         images,
         voiceover.path,
@@ -87,7 +76,6 @@ class VideoController {
 
       const processingTime = Date.now() - startTime;
 
-      // Save mapping information
       const mapping = {
         id: Date.now(),
         timestamp: new Date().toISOString(),
@@ -113,7 +101,6 @@ class VideoController {
         },
       };
 
-      // Save to mappings.json
       await this.saveMappingInfo(mapping);
 
       return ResponseUtils.send(
@@ -140,30 +127,23 @@ class VideoController {
     }
   }
 
-  // Create video with Ken Burns effect (legacy method - consider using VideoUtils)
   async createVideoWithImages(images, audioPath, outputPath, durationPerImage) {
     return new Promise((resolve, reject) => {
       const command = ffmpeg();
       const totalDuration = durationPerImage * images.length;
 
-      // Add images as inputs
       images.forEach((image) => {
         command.addInput(image.path);
       });
 
-      // Add audio input
       command.addInput(audioPath);
 
-      // Build filter complex for Ken Burns effect with proper time distribution
       let filterComplex = "";
       let inputLabels = [];
 
       images.forEach((image, index) => {
-        // Scale and crop each image
         const scale = `[${index}:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,setpts=PTS-STARTPTS[v${index}scaled];`;
 
-        // Apply Ken Burns with proper timing - use the calculated durationPerImage
-        // Duration in frames = durationPerImage * framerate (25fps)
         const durationInFrames = Math.ceil(durationPerImage * 25);
         const kenburns = `[v${index}scaled]zoompan=z='min(zoom+0.0015,1.5)':d=${durationInFrames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1920x1080:fps=25,setpts=PTS-STARTPTS[v${index}];`;
 
@@ -171,7 +151,6 @@ class VideoController {
         inputLabels.push(`[v${index}]`);
       });
 
-      // Concatenate all video segments with proper timing
       filterComplex += `${inputLabels.join("")}concat=n=${
         images.length
       }:v=1:a=0[outv]`;
@@ -182,7 +161,7 @@ class VideoController {
           "-map",
           "[outv]",
           "-map",
-          `${images.length}:a`, // Map audio from last input
+          `${images.length}:a`,
           "-c:v",
           "libx264",
           "-c:a",
@@ -194,7 +173,7 @@ class VideoController {
           "-r",
           "25",
           "-t",
-          totalDuration.toString(), // Limit total video duration to match audio
+          totalDuration.toString(),
         ])
         .output(outputPath)
         .on("start", (commandLine) => {
@@ -208,13 +187,11 @@ class VideoController {
           );
         })
         .on("progress", (progress) => {
-          // Calculate percentage manually from timemark
           let percentage = 0;
           if (progress.timemark && totalDuration > 0) {
-            // Parse timemark (format: "00:01:30.45" -> seconds)
             const timemarkSeconds = VideoUtils.parseTimemark(progress.timemark);
             percentage = Math.round((timemarkSeconds / totalDuration) * 100);
-            percentage = Math.min(percentage, 100); // Cap at 100%
+            percentage = Math.min(percentage, 100);
           }
 
           console.log(
@@ -235,7 +212,6 @@ class VideoController {
     });
   }
 
-  // Save mapping information
   async saveMappingInfo(mapping) {
     const mappingsFile = "./output/mappings.json";
     let mappings = [];
@@ -246,7 +222,6 @@ class VideoController {
         mappings = JSON.parse(data);
       }
     } catch (error) {
-      // File doesn't exist, creating new mappings file
       console.log("Creating new mappings file:", error.message);
     }
 
@@ -254,7 +229,6 @@ class VideoController {
     await fs.writeFile(mappingsFile, JSON.stringify(mappings, null, 2));
   }
 
-  // Download generated video
   async downloadVideo(req, res) {
     try {
       const filename = req.params.filename;
@@ -276,7 +250,6 @@ class VideoController {
     }
   }
 
-  // Get video preview (stream)
   async previewVideo(req, res) {
     try {
       const filename = req.params.filename;
@@ -323,7 +296,6 @@ class VideoController {
     }
   }
 
-  // Get all mappings
   async getMappings(req, res) {
     try {
       const mappingsFile = "./output/mappings.json";
@@ -352,18 +324,15 @@ class VideoController {
     }
   }
 
-  // Generate video with custom effects
   async generateVideoWithEffects(req, res) {
     try {
       const startTime = Date.now();
 
-      // Get validated data from middleware
       const { images, voiceover } = req.videoData;
       const effects = req.body.effects || {};
 
       console.log(`Processing ${images.length} images with effects:`, effects);
 
-      // Validate effects
       const effectsValidation = VideoEffectsUtils.validateEffects(effects);
       if (!effectsValidation.isValid) {
         return ResponseUtils.send(
@@ -372,16 +341,14 @@ class VideoController {
         );
       }
 
-      // Apply preset if specified
       let finalEffects = effects;
       if (effects.preset) {
         finalEffects = VideoEffectsUtils.applyPreset(effects.preset);
-        // Allow overrides of preset values
+
         finalEffects = { ...finalEffects, ...effects };
-        delete finalEffects.preset; // Remove preset from final effects
+        delete finalEffects.preset;
       }
 
-      // Validate inputs using VideoUtils
       const imagePaths = images.map((img) => img.path);
       const validation = await VideoUtils.validateVideoInputs(
         imagePaths,
@@ -395,20 +362,17 @@ class VideoController {
         );
       }
 
-      // Get audio duration
       const audioDuration = await VideoUtils.estimateAudioDuration(
         voiceover.path,
         60
       );
       console.log(`Audio duration: ${audioDuration} seconds`);
 
-      // Generate safe output filename
       const outputFilename = VideoUtils.createSafeVideoFilename(
         `effects_video_${finalEffects.preset || "custom"}`
       );
       const outputPath = path.join("./output/videos", outputFilename);
 
-      // Create video with effects
       await this.createVideoWithEffectsInternal(
         imagePaths,
         voiceover.path,
@@ -419,7 +383,6 @@ class VideoController {
 
       const processingTime = Date.now() - startTime;
 
-      // Save mapping information
       const mapping = {
         id: Date.now(),
         timestamp: new Date().toISOString(),
@@ -450,7 +413,6 @@ class VideoController {
         },
       };
 
-      // Save to mappings.json
       await this.saveMappingInfo(mapping);
 
       return ResponseUtils.send(
@@ -478,7 +440,6 @@ class VideoController {
     }
   }
 
-  // Get available effects
   async getAvailableEffects(req, res) {
     try {
       const effects = VideoEffectsUtils.getAvailableEffects();
@@ -525,7 +486,6 @@ class VideoController {
     }
   }
 
-  // Preview effect on sample images
   async previewEffect(req, res) {
     try {
       const { effectType, effectName } = req.params;
@@ -566,7 +526,6 @@ class VideoController {
     }
   }
 
-  // Internal method to create video with effects using VideoEffectsUtils
   async createVideoWithEffectsInternal(
     imagePaths,
     audioPath,
