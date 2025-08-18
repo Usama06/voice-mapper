@@ -2,8 +2,7 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
-const setRoutes = require("./routes/index");
-const { logger, authenticate } = require("./middleware/index");
+const setVideoRoutes = require("./routes/video.route");
 
 const app = express();
 
@@ -16,7 +15,6 @@ app.use(
 );
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
-app.use(logger);
 
 // Serve static files
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
@@ -34,7 +32,7 @@ app.get("/health", (req, res) => {
 });
 
 // Routes setup
-setRoutes(app);
+setVideoRoutes(app);
 
 // Start the server
 const PORT = process.env.PORT || 3000;

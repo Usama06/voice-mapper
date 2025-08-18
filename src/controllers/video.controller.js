@@ -1,4 +1,3 @@
-const multer = require("multer");
 const path = require("path");
 const fs = require("fs-extra");
 const ffmpeg = require("fluent-ffmpeg");
@@ -24,99 +23,13 @@ try {
 }
 
 class VideoController {
-  constructor() {
-    // Ensure output directories exist
-    this.ensureDirectories();
-
-    // Configure multer for file uploads
-    this.upload = multer({
-      storage: multer.diskStorage({
-        destination: (req, file, cb) => {
-          if (file.fieldname === "images") {
-            cb(null, "./uploads/images");
-          } else if (file.fieldname === "voiceover") {
-            cb(null, "./uploads/audio");
-          }
-        },
-        filename: (req, file, cb) => {
-          const uniqueSuffix =
-            Date.now() + "-" + Math.round(Math.random() * 1e9);
-          cb(
-            null,
-            file.fieldname +
-              "-" +
-              uniqueSuffix +
-              path.extname(file.originalname)
-          );
-        },
-      }),
-      limits: {
-        fileSize: 50 * 1024 * 1024, // 50MB limit
-      },
-      fileFilter: (req, file, cb) => {
-        if (file.fieldname === "images") {
-          // Accept images
-          if (file.mimetype.startsWith("image/")) {
-            cb(null, true);
-          } else {
-            cb(
-              new Error("Only image files are allowed for images field"),
-              false
-            );
-          }
-        } else if (file.fieldname === "voiceover") {
-          // Accept audio files
-          if (file.mimetype.startsWith("audio/")) {
-            cb(null, true);
-          } else {
-            cb(
-              new Error("Only audio files are allowed for voiceover field"),
-              false
-            );
-          }
-        } else {
-          cb(new Error("Unexpected field"), false);
-        }
-      },
-    });
-  }
-
-  async ensureDirectories() {
-    const dirs = [
-      "./uploads/images",
-      "./uploads/audio",
-      "./output/videos",
-      "./temp",
-    ];
-
-    for (const dir of dirs) {
-      await fs.ensureDir(dir);
-    }
-  }
-
-  // Middleware for handling file uploads
-  uploadFiles() {
-    return this.upload.fields([
-      { name: "images", maxCount: 10 },
-      { name: "voiceover", maxCount: 1 },
-    ]);
-  }
-
   // Generate video from images and voiceover
   async generateVideo(req, res) {
     try {
       const startTime = Date.now();
 
-      // Validate uploads
-      if (!req.files || !req.files.images || !req.files.voiceover) {
-        return res.status(400).json({
-          error: "Missing required files",
-          message: "Please upload at least one image and one voiceover file",
-        });
-      }
-
-      const images = req.files.images;
-      const voiceover = req.files.voiceover[0];
+      // Get validated data from middleware
+      const { images, voiceover } = req.videoData;
 
       console.log(
         `Processing ${images.length} images with voiceover: ${voiceover.filename}`
