@@ -3,10 +3,6 @@ const path = require("path");
 const DirectoryUtils = require("./directory.utils");
 
 class VideoUtils {
-  /**
-   * Get video configuration from environment variables
-   * @returns {Object} - Video processing configuration
-   */
   static getVideoConfig() {
     return {
       width: parseInt(process.env.VIDEO_WIDTH || "1920", 10),
@@ -23,12 +19,6 @@ class VideoUtils {
     };
   }
 
-  /**
-   * Create a safe output filename for videos
-   * @param {string} baseName - Base name for the file
-   * @param {string} extension - File extension (default: 'mp4')
-   * @returns {string} - Safe filename with timestamp
-   */
   static createSafeVideoFilename(baseName = "video", extension = "mp4") {
     const timestamp = Date.now();
     const randomSuffix = Math.random().toString(36).substring(2, 8);
@@ -36,12 +26,6 @@ class VideoUtils {
     return `${safeName}_${timestamp}_${randomSuffix}.${extension}`;
   }
 
-  /**
-   * Estimate audio duration (fallback when ffprobe fails)
-   * @param {string} audioPath - Path to audio file
-   * @param {number} fallbackDuration - Fallback duration in seconds
-   * @returns {Promise<number>} - Audio duration in seconds
-   */
   static async estimateAudioDuration(audioPath, fallbackDuration = 60) {
     return new Promise((resolve) => {
       ffmpeg.ffprobe(audioPath, (err, metadata) => {
@@ -58,13 +42,6 @@ class VideoUtils {
     });
   }
 
-  /**
-   * Calculate Ken Burns effect parameters
-   * @param {number} index - Image index in sequence
-   * @param {number} totalImages - Total number of images
-   * @param {Object} config - Video configuration
-   * @returns {Object} - Ken Burns effect parameters
-   */
   static calculateKenBurnsEffect(index, totalImages, config) {
     const { width, height, kenBurnsZoom, kenBurnsDuration } = config;
     const isZoomIn = index % 2 === 0;
@@ -92,14 +69,6 @@ class VideoUtils {
     }
   }
 
-  /**
-   * Generate video filter for single image with Ken Burns effect
-   * @param {number} imageIndex - Index of the image
-   * @param {number} totalImages - Total number of images
-   * @param {number} imageDuration - Duration for each image in seconds
-   * @param {Object} config - Video configuration
-   * @returns {string} - FFmpeg filter string
-   */
   static generateImageFilter(imageIndex, totalImages, imageDuration, config) {
     const { width, height } = config;
     const effect = VideoUtils.calculateKenBurnsEffect(
@@ -127,30 +96,18 @@ class VideoUtils {
     );
   }
 
-  /**
-   * Create FFmpeg command for video generation
-   * @param {Array} imagePaths - Array of image file paths
-   * @param {string} audioPath - Path to audio file
-   * @param {string} outputPath - Path for output video
-   * @param {number} audioDuration - Duration of audio in seconds
-   * @returns {Object} - FFmpeg command instance
-   */
   static createVideoCommand(imagePaths, audioPath, outputPath, audioDuration) {
     const config = VideoUtils.getVideoConfig();
     const imageDuration = audioDuration / imagePaths.length;
 
-    // Create FFmpeg command
     const command = ffmpeg();
 
-    // Add image inputs
     imagePaths.forEach((imagePath) => {
       command.input(imagePath).loop(imageDuration);
     });
 
-    // Add audio input
     command.input(audioPath);
 
-    // Generate video filters
     const videoFilters = imagePaths.map((_, index) =>
       VideoUtils.generateImageFilter(
         index,
@@ -160,15 +117,12 @@ class VideoUtils {
       )
     );
 
-    // Concatenate video streams
     const concatInputs = imagePaths.map((_, index) => `[v${index}]`).join("");
     const concatFilter = `${concatInputs}concat=n=${imagePaths.length}:v=1:a=0[outv]`;
     videoFilters.push(concatFilter);
 
-    // Apply video filters
     command.complexFilter(videoFilters, ["outv"]);
 
-    // Map streams and set output options
     command
       .map("[outv]")
       .map(`${imagePaths.length}:a`)
@@ -188,16 +142,9 @@ class VideoUtils {
     return command;
   }
 
-  /**
-   * Validate video processing requirements
-   * @param {Array} imagePaths - Array of image file paths
-   * @param {string} audioPath - Path to audio file
-   * @returns {Promise<Object>} - Validation result
-   */
   static async validateVideoInputs(imagePaths, audioPath) {
     const errors = [];
 
-    // Check if images exist
     for (const imagePath of imagePaths) {
       const exists = await DirectoryUtils.fileExists(imagePath);
       if (!exists) {
@@ -205,13 +152,11 @@ class VideoUtils {
       }
     }
 
-    // Check if audio exists
     const audioExists = await DirectoryUtils.fileExists(audioPath);
     if (!audioExists) {
       errors.push(`Audio file not found: ${audioPath}`);
     }
 
-    // Check image count
     if (imagePaths.length === 0) {
       errors.push("At least one image is required");
     }
@@ -222,28 +167,14 @@ class VideoUtils {
     };
   }
 
-  /**
-   * Get supported image formats
-   * @returns {Array<string>} - Array of supported image extensions
-   */
   static getSupportedImageFormats() {
     return [".jpg", ".jpeg", ".png", ".bmp", ".gif", ".tiff", ".webp"];
   }
 
-  /**
-   * Get supported audio formats
-   * @returns {Array<string>} - Array of supported audio extensions
-   */
   static getSupportedAudioFormats() {
     return [".mp3", ".wav", ".aac", ".m4a", ".ogg", ".flac"];
   }
 
-  /**
-   * Create progress tracking callback for FFmpeg
-   * @param {Function} onProgress - Progress callback function
-   * @param {number} totalDuration - Total duration for progress calculation
-   * @returns {Function} - FFmpeg progress callback
-   */
   static createProgressCallback(onProgress, totalDuration) {
     return (progress) => {
       if (onProgress && typeof onProgress === "function") {
