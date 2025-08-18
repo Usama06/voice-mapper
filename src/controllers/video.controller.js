@@ -548,7 +548,19 @@ class VideoController {
             console.log("FFmpeg command:", commandLine);
           })
           .on("progress", (progress) => {
-            console.log(`Processing: ${progress.percent}% done`);
+            let percentage = 0;
+            if (progress.timemark && audioDuration > 0) {
+              const timemarkSeconds = VideoUtils.parseTimemark(
+                progress.timemark
+              );
+              percentage = Math.round((timemarkSeconds / audioDuration) * 100);
+              percentage = Math.min(percentage, 100);
+            }
+            console.log(
+              `Processing: ${percentage}% done (${
+                progress.timemark || "calculating..."
+              })`
+            );
           })
           .on("error", (err, stdout, stderr) => {
             console.error("FFmpeg error:", err);
