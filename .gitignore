@@ -4,6 +4,9 @@ DEPENDENCIES.md
 # Assets folder (contains large media files)
 Assets/
 
+# uploads
+uploads/
+
 # Environment variables
 .env
 .env.local

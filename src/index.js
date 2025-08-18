@@ -1,13 +1,26 @@
 require("dotenv").config();
 const express = require("express");
+const cors = require("cors");
+const path = require("path");
 const setRoutes = require("./routes/index");
 const { logger, authenticate } = require("./middleware/index");
 
 const app = express();
 
 // Middleware setup
-app.use(express.json());
+app.use(
+  cors({
+    origin: ["http://localhost:3000", "http://localhost:8080"], // Add your frontend URLs
+    credentials: true,
+  })
+);
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 app.use(logger);
+
+// Serve static files
+app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
+app.use("/output", express.static(path.join(__dirname, "../output")));
 
 // Health check route
 app.get("/health", (req, res) => {
