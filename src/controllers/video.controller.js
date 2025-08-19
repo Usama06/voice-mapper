@@ -563,7 +563,7 @@ class VideoController {
               description: "Use effects individually or apply a preset",
               examples: {
                 individual: {
-                  transition: "fade",
+                  transition: "none",
                   motion: "kenburns",
                   color: "vintage",
                   overlay: "light_leaks",
@@ -643,12 +643,24 @@ class VideoController {
   ) {
     return new Promise((resolve, reject) => {
       try {
+        // Determine transition type from effects - default to no transitions
+        let transitionType = "none"; // default to no transitions
+        if (effects && effects.transition) {
+          // Check if it's a slide transition
+          if (effects.transition.toLowerCase().includes("slide")) {
+            transitionType = "slide";
+          } else if (effects.transition.toLowerCase().includes("fade")) {
+            transitionType = "fade";
+          }
+        }
+
         const command = VideoEffectsUtils.createVideoWithEffects(
           imagePaths,
           audioPath,
           outputPath,
           audioDuration,
-          effects
+          effects,
+          transitionType
         );
 
         command

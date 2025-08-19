@@ -30,6 +30,8 @@ class VideoEffectsUtils {
     duration = 1.0
   ) {
     const effectMap = {
+      none: `[v${fromIndex}]copy[trans${toIndex}]`, // No transition - just copy the video
+
       fade: `[v${fromIndex}][v${toIndex}]xfade=transition=fade:duration=${duration}:offset=0[trans${toIndex}]`,
 
       crossfade: `[v${fromIndex}][v${toIndex}]xfade=transition=fadeblack:duration=${duration}:offset=0[trans${toIndex}]`,
@@ -55,7 +57,7 @@ class VideoEffectsUtils {
       dissolve: `[v${fromIndex}][v${toIndex}]xfade=transition=dissolve:duration=${duration}:offset=0[trans${toIndex}]`,
     };
 
-    return effectMap[transitionType] || effectMap.fade;
+    return effectMap[transitionType] || effectMap.none;
   }
 
   // Generate motion effects for individual images
@@ -179,7 +181,7 @@ class VideoEffectsUtils {
     outputPath,
     audioDuration,
     effects = {},
-    transitionType = "fade" // 'fade' or 'slide'
+    transitionType = "none" // 'fade', 'slide', or 'none'
   ) {
     const config = VIDEO_CONFIG_DEFAULTS;
     const imageDuration = audioDuration / imagePaths.length;
@@ -213,29 +215,11 @@ class VideoEffectsUtils {
         `zoompan=z='if(lte(on,${zoomFrames}),1+(0.08*pow(on/${zoomFrames},0.5)),1.08)':d=${totalFrames}:` +
         `x='(iw-ow)/2':y='(ih-oh)/2':s=${config.width}x${config.height}:fps=${config.fps}`;
 
-      // Add transition effects for smooth transitions (except for single image)
-      if (imagePaths.length > 1) {
-        if (transitionType === "slide") {
-          // Slide transitions using translate filter
-          if (index === 0) {
-            // First image: slide out to the left at the end
-            filterChain += `,translate=x='if(gte(t,${fadeOutStart}),-(t-${fadeOutStart})*${
-              config.width * 2
-            },0)':y=0:fillcolor=black`;
-          } else if (index === imagePaths.length - 1) {
-            // Last image: slide in from the right at the start
-            filterChain += `,translate=x='if(lte(t,0.5),${config.width}-(t*${
-              config.width * 2
-            }),0)':y=0:fillcolor=black`;
-          } else {
-            // Middle images: slide in from right, then slide out to left
-            filterChain += `,translate=x='if(lte(t,0.5),${config.width}-(t*${
-              config.width * 2
-            }),if(gte(t,${fadeOutStart}),-(t-${fadeOutStart})*${
-              config.width * 2
-            },0))':y=0:fillcolor=black`;
-          }
-        } else if (index === 0) {
+      // No individual transition effects are added here when using slide transitions
+      // Slide transitions will be handled by the xfade chain in the concatenation phase
+      // For fade transitions, only add fade effects when specifically using fade
+      if (imagePaths.length > 1 && transitionType === "fade") {
+        if (index === 0) {
           // Fade transitions - First image: fade out at the end
           filterChain += `,fade=t=out:st=${fadeOutStart}:d=0.5`;
         } else if (index === imagePaths.length - 1) {
@@ -251,10 +235,31 @@ class VideoEffectsUtils {
       videoFilters.push(filterChain);
     });
 
-    // Concatenation with proper timing
+    // Build output with proper transitions
     if (imagePaths.length === 1) {
+      // Single image: just copy
       videoFilters.push(`[v0]copy[outv]`);
+    } else if (transitionType === "slide") {
+      // Slide transitions using chained xfade filters with proper slide effect
+      const transitionDuration = 1.0; // Duration of slide transition
+
+      // Create chained xfade transitions with slideright (current goes left, new comes from right)
+      let currentInput = "[v0]";
+      for (let i = 1; i < imagePaths.length; i++) {
+        const nextInput = `[v${i}]`;
+        const outputLabel =
+          i === imagePaths.length - 1 ? "[outv]" : `[slide${i}]`;
+        // Calculate offset: start transition near the end of current image duration
+        const offset =
+          (i - 1) * imageDuration + (imageDuration - transitionDuration);
+
+        // Use slideright: current image slides out to left, new image slides in from right
+        const xfadeFilter = `${currentInput}${nextInput}xfade=transition=slideright:duration=${transitionDuration}:offset=${offset}${outputLabel}`;
+        videoFilters.push(xfadeFilter);
+        currentInput = outputLabel;
+      }
     } else {
+      // No transitions (none) or fade transitions - use simple concatenation
       const concatInputs = imagePaths.map((_, index) => `[v${index}]`).join("");
       const concatFilter = `${concatInputs}concat=n=${imagePaths.length}:v=1:a=0[outv]`;
       videoFilters.push(concatFilter);

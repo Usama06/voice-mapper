@@ -1,6 +1,7 @@
 // Video Effects Constants
 // Transition effects available for video generation
 const VIDEO_TRANSITIONS = [
+  "none",
   "fade",
   "crossfade",
   "wipeleft",
@@ -61,21 +62,21 @@ const VIDEO_OVERLAY_EFFECTS = [
 // Predefined effect combinations (presets)
 const VIDEO_EFFECT_PRESETS = {
   cinematic: {
-    transition: "fade",
+    transition: "none",
     motion: "kenburns",
     color: "vintage",
     overlay: "light_leaks",
     description: "Cinematic look with warm tones and subtle movement",
   },
   modern: {
-    transition: "crossfade",
+    transition: "none",
     motion: "zoom_in",
     color: "high_contrast",
     overlay: null,
     description: "Clean modern style with sharp contrasts",
   },
   nostalgic: {
-    transition: "dissolve",
+    transition: "none",
     motion: "pan_right",
     color: "sepia",
     overlay: "scratches",
@@ -89,14 +90,14 @@ const VIDEO_EFFECT_PRESETS = {
     description: "High-energy dynamic presentation",
   },
   minimal: {
-    transition: "fade",
+    transition: "none",
     motion: "static",
     color: "black_white",
     overlay: null,
     description: "Clean minimal black and white style",
   },
   nature: {
-    transition: "wipeleft",
+    transition: "none",
     motion: "zoom_out",
     color: "cool",
     overlay: "bokeh",

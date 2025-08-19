@@ -95,7 +95,6 @@ class VideoUtils {
   static createVideoCommand(imagePaths, audioPath, outputPath, audioDuration) {
     const config = VideoUtils.getVideoConfig();
     const imageDuration = audioDuration / imagePaths.length;
-    const transitionDuration = 2.0;
 
     const command = ffmpeg();
 
@@ -119,25 +118,15 @@ class VideoUtils {
       );
     });
 
+    // Use simple concatenation without any transitions
     if (imagePaths.length === 1) {
       videoFilters.push(`[v0]copy[outv]`);
-    } else if (imagePaths.length === 2) {
-      videoFilters.push(
-        `[v0][v1]xfade=transition=smoothleft:duration=${transitionDuration}:offset=${
-          imageDuration - transitionDuration
-        }[outv]`
-      );
     } else {
-      let currentStream = `[v0]`;
-      for (let i = 1; i < imagePaths.length; i++) {
-        const offset = i * imageDuration - transitionDuration;
-        const outputLabel =
-          i === imagePaths.length - 1 ? `[outv]` : `[stream${i}]`;
-        videoFilters.push(
-          `${currentStream}[v${i}]xfade=transition=smoothleft:duration=${transitionDuration}:offset=${offset}${outputLabel}`
-        );
-        currentStream = outputLabel;
-      }
+      // Simple concatenation - no transitions, just join videos end-to-end
+      const inputLabels = imagePaths.map((_, index) => `[v${index}]`).join("");
+      videoFilters.push(
+        `${inputLabels}concat=n=${imagePaths.length}:v=1:a=0[outv]`
+      );
     }
 
     command.complexFilter(videoFilters, ["outv"]);
