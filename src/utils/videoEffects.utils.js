@@ -178,7 +178,8 @@ class VideoEffectsUtils {
     audioPath,
     outputPath,
     audioDuration,
-    effects = {}
+    effects = {},
+    transitionType = "fade" // 'fade' or 'slide'
   ) {
     const config = VIDEO_CONFIG_DEFAULTS;
     const imageDuration = audioDuration / imagePaths.length;
@@ -201,27 +202,47 @@ class VideoEffectsUtils {
         imageDuration - (index === imagePaths.length - 1 ? 0 : 0.5); // End fade-out
 
       let totalFrames = Math.round(imageDuration * config.fps);
-      let zoomDuration = Math.min(5.0, imageDuration * 0.8); // Zoom for max 5 seconds or 80% of duration
+      let zoomDuration = Math.min(8.0, imageDuration * 0.95); // Zoom for max 8 seconds or 95% of duration
       let zoomFrames = Math.round(zoomDuration * config.fps);
       let filterChain =
-        `[${index}:v]scale=${config.width * 1.2}:${
-          config.height * 1.2
+        `[${index}:v]scale=${config.width * 1.1}:${
+          config.height * 1.1
         }:force_original_aspect_ratio=increase,` +
         `crop=${config.width}:${config.height},` +
         `setpts=PTS-STARTPTS,` +
-        `zoompan=z='if(lte(on,${zoomFrames}),1+(0.15*on/${zoomFrames}),1.15)':d=${totalFrames}:` +
+        `zoompan=z='if(lte(on,${zoomFrames}),1+(0.08*pow(on/${zoomFrames},0.5)),1.08)':d=${totalFrames}:` +
         `x='(iw-ow)/2':y='(ih-oh)/2':s=${config.width}x${config.height}:fps=${config.fps}`;
 
-      // Add fade effects for smooth transitions (except for single image)
+      // Add transition effects for smooth transitions (except for single image)
       if (imagePaths.length > 1) {
-        if (index === 0) {
-          // First image: fade out at the end
+        if (transitionType === "slide") {
+          // Slide transitions using translate filter
+          if (index === 0) {
+            // First image: slide out to the left at the end
+            filterChain += `,translate=x='if(gte(t,${fadeOutStart}),-(t-${fadeOutStart})*${
+              config.width * 2
+            },0)':y=0:fillcolor=black`;
+          } else if (index === imagePaths.length - 1) {
+            // Last image: slide in from the right at the start
+            filterChain += `,translate=x='if(lte(t,0.5),${config.width}-(t*${
+              config.width * 2
+            }),0)':y=0:fillcolor=black`;
+          } else {
+            // Middle images: slide in from right, then slide out to left
+            filterChain += `,translate=x='if(lte(t,0.5),${config.width}-(t*${
+              config.width * 2
+            }),if(gte(t,${fadeOutStart}),-(t-${fadeOutStart})*${
+              config.width * 2
+            },0))':y=0:fillcolor=black`;
+          }
+        } else if (index === 0) {
+          // Fade transitions - First image: fade out at the end
           filterChain += `,fade=t=out:st=${fadeOutStart}:d=0.5`;
         } else if (index === imagePaths.length - 1) {
-          // Last image: fade in at the start
+          // Fade transitions - Last image: fade in at the start
           filterChain += `,fade=t=in:st=0:d=0.5`;
         } else {
-          // Middle images: fade in and out
+          // Fade transitions - Middle images: fade in and out
           filterChain += `,fade=t=in:st=0:d=0.5,fade=t=out:st=${fadeOutStart}:d=0.5`;
         }
       }
