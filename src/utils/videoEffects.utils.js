@@ -76,11 +76,19 @@ class VideoEffectsUtils {
 
       zoom_in: `[${imageIndex}:v]scale=${width * 1.4}:${
         height * 1.4
-      }:force_original_aspect_ratio=increase,crop=${width}:${height},zoompan=z='1+(0.4*on/${totalFrames})':x='(iw-ow)/2':y='(ih-oh)/2':d=${totalFrames}:s=${width}x${height}[v${imageIndex}]`,
+      }:force_original_aspect_ratio=increase,crop=${width}:${height},zoompan=z='if(lte(on,${Math.round(
+        Math.min(3.0, duration * 0.5) * fps
+      )}),1+(0.4*on/${Math.round(
+        Math.min(3.0, duration * 0.5) * fps
+      )}),1.4)':x='(iw-ow)/2':y='(ih-oh)/2':d=${totalFrames}:s=${width}x${height}[v${imageIndex}]`,
 
       zoom_out: `[${imageIndex}:v]scale=${width * 1.4}:${
         height * 1.4
-      }:force_original_aspect_ratio=increase,crop=${width}:${height},zoompan=z='1.4-(0.4*on/${totalFrames})':x='(iw-ow)/2':y='(ih-oh)/2':d=${totalFrames}:s=${width}x${height}[v${imageIndex}]`,
+      }:force_original_aspect_ratio=increase,crop=${width}:${height},zoompan=z='if(lte(on,${Math.round(
+        Math.min(3.0, duration * 0.5) * fps
+      )}),1.4-(0.4*on/${Math.round(
+        Math.min(3.0, duration * 0.5) * fps
+      )}),1.0)':x='(iw-ow)/2':y='(ih-oh)/2':d=${totalFrames}:s=${width}x${height}[v${imageIndex}]`,
 
       pan_left: `[${imageIndex}:v]scale=${width * 1.3}:${
         height * 1.3
@@ -193,13 +201,15 @@ class VideoEffectsUtils {
         imageDuration - (index === imagePaths.length - 1 ? 0 : 0.5); // End fade-out
 
       let totalFrames = Math.round(imageDuration * config.fps);
+      let zoomDuration = Math.min(5.0, imageDuration * 0.8); // Zoom for max 5 seconds or 80% of duration
+      let zoomFrames = Math.round(zoomDuration * config.fps);
       let filterChain =
-        `[${index}:v]scale=${config.width * 1.4}:${
-          config.height * 1.4
+        `[${index}:v]scale=${config.width * 1.2}:${
+          config.height * 1.2
         }:force_original_aspect_ratio=increase,` +
         `crop=${config.width}:${config.height},` +
         `setpts=PTS-STARTPTS,` +
-        `zoompan=z='1+(0.4*on/${totalFrames})':d=${totalFrames}:` +
+        `zoompan=z='if(lte(on,${zoomFrames}),1+(0.15*on/${zoomFrames}),1.15)':d=${totalFrames}:` +
         `x='(iw-ow)/2':y='(ih-oh)/2':s=${config.width}x${config.height}:fps=${config.fps}`;
 
       // Add fade effects for smooth transitions (except for single image)
