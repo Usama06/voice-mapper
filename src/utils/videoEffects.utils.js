@@ -74,13 +74,13 @@ class VideoEffectsUtils {
         height * 1.5
       }:force_original_aspect_ratio=increase,crop=${width}:${height},zoompan=z='min(1.0+0.0015*on,1.2)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${totalFrames}:s=${width}x${height}[v${imageIndex}]`,
 
-      zoom_in: `[${imageIndex}:v]scale=${width * 1.5}:${
-        height * 1.5
-      }:force_original_aspect_ratio=increase,crop=${width}:${height},zoompan=z='1.0+0.002*on':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${totalFrames}:s=${width}x${height}[v${imageIndex}]`,
+      zoom_in: `[${imageIndex}:v]scale=${width * 1.4}:${
+        height * 1.4
+      }:force_original_aspect_ratio=increase,crop=${width}:${height},zoompan=z='1+(0.4*on/${totalFrames})':x='(iw-ow)/2':y='(ih-oh)/2':d=${totalFrames}:s=${width}x${height}[v${imageIndex}]`,
 
-      zoom_out: `[${imageIndex}:v]scale=${width * 1.5}:${
-        height * 1.5
-      }:force_original_aspect_ratio=increase,crop=${width}:${height},zoompan=z='1.3-0.002*on':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${totalFrames}:s=${width}x${height}[v${imageIndex}]`,
+      zoom_out: `[${imageIndex}:v]scale=${width * 1.4}:${
+        height * 1.4
+      }:force_original_aspect_ratio=increase,crop=${width}:${height},zoompan=z='1.4-(0.4*on/${totalFrames})':x='(iw-ow)/2':y='(ih-oh)/2':d=${totalFrames}:s=${width}x${height}[v${imageIndex}]`,
 
       pan_left: `[${imageIndex}:v]scale=${width * 1.3}:${
         height * 1.3
@@ -192,14 +192,15 @@ class VideoEffectsUtils {
       const fadeOutStart =
         imageDuration - (index === imagePaths.length - 1 ? 0 : 0.5); // End fade-out
 
+      let totalFrames = Math.round(imageDuration * config.fps);
       let filterChain =
-        `[${index}:v]scale=${config.width}:${config.height}:force_original_aspect_ratio=increase,` +
+        `[${index}:v]scale=${config.width * 1.4}:${
+          config.height * 1.4
+        }:force_original_aspect_ratio=increase,` +
         `crop=${config.width}:${config.height},` +
         `setpts=PTS-STARTPTS,` +
-        `zoompan=z='min(zoom+0.001,1.3)':d=${Math.round(
-          imageDuration * config.fps
-        )}:` +
-        `x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=${config.width}x${config.height}:fps=${config.fps}`;
+        `zoompan=z='1+(0.4*on/${totalFrames})':d=${totalFrames}:` +
+        `x='(iw-ow)/2':y='(ih-oh)/2':s=${config.width}x${config.height}:fps=${config.fps}`;
 
       // Add fade effects for smooth transitions (except for single image)
       if (imagePaths.length > 1) {
