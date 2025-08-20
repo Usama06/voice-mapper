@@ -62,21 +62,21 @@ const VIDEO_OVERLAY_EFFECTS = [
 // Predefined effect combinations (presets)
 const VIDEO_EFFECT_PRESETS = {
   cinematic: {
-    transition: "none",
+    transition: "slideleft",
     motion: "kenburns",
     color: "vintage",
     overlay: "light_leaks",
     description: "Cinematic look with warm tones and subtle movement",
   },
   modern: {
-    transition: "none",
+    transition: "slideleft",
     motion: "zoom_in",
     color: "high_contrast",
     overlay: null,
     description: "Clean modern style with sharp contrasts",
   },
   nostalgic: {
-    transition: "none",
+    transition: "slideleft",
     motion: "pan_right",
     color: "sepia",
     overlay: "scratches",
@@ -90,14 +90,14 @@ const VIDEO_EFFECT_PRESETS = {
     description: "High-energy dynamic presentation",
   },
   minimal: {
-    transition: "none",
+    transition: "slideleft",
     motion: "static",
     color: "black_white",
     overlay: null,
     description: "Clean minimal black and white style",
   },
   nature: {
-    transition: "none",
+    transition: "slideleft",
     motion: "zoom_out",
     color: "cool",
     overlay: "bokeh",

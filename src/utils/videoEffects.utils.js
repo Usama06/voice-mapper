@@ -240,21 +240,23 @@ class VideoEffectsUtils {
       // Single image: just copy
       videoFilters.push(`[v0]copy[outv]`);
     } else if (transitionType === "slide") {
-      // Slide transitions using chained xfade filters with proper slide effect
-      const transitionDuration = 1.0; // Duration of slide transition
+      // Slide transitions using chained xfade filters with slideleft effect
+      // Current image slides out to left, new image slides in from right
+      const transitionDuration = 1.5; // Duration of slide transition (smoother)
+      const effectiveImageDuration = imageDuration - transitionDuration;
 
-      // Create chained xfade transitions with slideright (current goes left, new comes from right)
+      // Create chained xfade transitions with slideleft
       let currentInput = "[v0]";
       for (let i = 1; i < imagePaths.length; i++) {
         const nextInput = `[v${i}]`;
         const outputLabel =
           i === imagePaths.length - 1 ? "[outv]" : `[slide${i}]`;
-        // Calculate offset: start transition near the end of current image duration
-        const offset =
-          (i - 1) * imageDuration + (imageDuration - transitionDuration);
 
-        // Use slideright: current image slides out to left, new image slides in from right
-        const xfadeFilter = `${currentInput}${nextInput}xfade=transition=slideright:duration=${transitionDuration}:offset=${offset}${outputLabel}`;
+        // Calculate offset: start transition at the effective end of current image
+        const offset = i * effectiveImageDuration;
+
+        // Use slideleft: current image slides out to left, new image slides in from right
+        const xfadeFilter = `${currentInput}${nextInput}xfade=transition=slideleft:duration=${transitionDuration}:offset=${offset}${outputLabel}`;
         videoFilters.push(xfadeFilter);
         currentInput = outputLabel;
       }
