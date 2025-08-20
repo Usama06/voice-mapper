@@ -40,7 +40,7 @@ app.get("/health", (req, res) => {
 app.use(ResponseUtils.globalErrorHandler);
 
 // Start the server
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8000;
 
 // Initialize application with async setup
 async function startServer() {
