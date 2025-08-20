@@ -51,7 +51,7 @@ async function startServer() {
     // Setup routes (async)
     await setVideoRoutes(app);
 
-    app.listen(PORT, () => {
+    app.listen(PORT, "0.0.0.0", () => {
       console.log(`✅ Server is running on port ${PORT}`);
       console.log(`📁 All directories initialized`);
       console.log(`🔗 Health check: http://localhost:${PORT}/health`);
